@@ -1,0 +1,114 @@
+package actors
+
+import actors.CacheActor.{GetEntryList, GetHashTagList}
+import actors.LikeActor.GetLike
+import akka.actor.{Actor, ActorRef, ActorSystem}
+import akka.pattern.ask
+import akka.stream.ActorMaterializer
+import akka.util.Timeout
+import repo.EntriesReadRepo.{Entry, EntryLocation, HashTag, HashTagStats}
+
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
+import scala.util.{Failure, Success}
+import scala.concurrent.duration._
+
+trait EntryEnrichment {
+  val _likesActor: ActorRef
+
+  def enrichEntryWithLikes(entry: Entry)(implicit _ec: ExecutionContext): Future[Entry] = {
+    LikeActor.askGetLikes(_likesActor, GetLike(entry.slug)).map { likes =>
+      entry.copy(likes = likes)
+    }
+  }
+
+  def enrichEntryWithLikes(entryOpt: Option[Entry])(implicit _ec: ExecutionContext): Future[Option[Entry]] = {
+    entryOpt match {
+      case None    => Future.successful(None)
+      case Some(a) => enrichEntryWithLikes(a).map(Some(_))
+    }
+  }
+
+  def enrichEntriesWithLikes(seq: Seq[Entry])(implicit _ec: ExecutionContext): Future[Seq[Entry]] = {
+    Future.sequence(seq.map(enrichEntryWithLikes))
+  }
+}
+
+object RepoActor {
+
+  //possible msgs:
+  case class EntryBySlug(complete: Option[Entry] => Unit, slug: String)
+  case class EntryListSliceByDate(complete: List[Entry] => Unit, startPost: Int, limit: Int)
+  case class HashTagsBySearchString(complete: List[HashTag] => Unit, searchString: String)
+  case class EntriesByLocation(complete: List[Entry] => Unit, location: EntryLocation)
+  case class EntriesByTag(complete: List[Entry] => Unit, tag: String)
+
+  case class GetAllLocations(complete: List[EntryLocation] => Unit)
+
+  def Props(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: ActorSystem,
+                                                           _ec: ExecutionContextExecutor,
+                                                           materializer: ActorMaterializer): RepoActor = {
+    new RepoActor(cacheActorRef, likesActor)
+  }
+
+}
+
+
+class RepoActor(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: ActorSystem,
+                                                               _ec: ExecutionContextExecutor,
+                                                               materializer: ActorMaterializer)
+    extends Actor
+    with EntryEnrichment {
+  import RepoActor._
+  implicit private val timeout: Timeout = 10 seconds
+
+  override val _likesActor: ActorRef = likesActor
+
+  override def receive: Receive = {
+
+    case EntryBySlug(complete, slug) =>
+      askForEntries.map(f => f.find(_.slug == slug)).flatMap(enrichEntryWithLikes).onComplete {
+        case Success(a) => complete(a)
+
+      }
+
+    case EntryListSliceByDate(com, start, limit) =>
+      askForEntries.map(f => f.slice(start, start + limit)).flatMap(enrichEntriesWithLikes).onComplete {
+        case Success(a) => com(a.toList)
+      }
+
+    case EntriesByLocation(com, loc) =>
+      askForEntries.map(f => f.filter(_.location == loc)).flatMap(enrichEntriesWithLikes).onComplete {
+        case Success(a) => com(a.toList)
+      }
+
+    case HashTagsBySearchString(com, searchString) =>
+      val filteredTagsFut = askForHashTags.map(
+        tagSeqs =>
+          tagSeqs
+            .map(f => f._1)
+            .toSeq
+            .map(tag => (levensthein(tag.tag, searchString).toDouble / (tag.tag.length + searchString.length), tag))
+            .sortBy(_._1)
+            .take(10))
+
+      filteredTagsFut.onComplete {
+        case Success(filteredTags) => com(filteredTags.map(f => f._2).toList)
+        case Failure(s)            => s.printStackTrace()
+      }
+
+  }
+
+  def askForEntries = (cacheActorRef ? GetEntryList()).asInstanceOf[Future[Seq[Entry]]]
+
+  def askForHashTags = (cacheActorRef ? GetHashTagList()).asInstanceOf[Future[Map[HashTag, HashTagStats]]]
+
+  def levensthein(a: String, b: String): Int = {
+    import scala.math.min
+    ((0 to b.size).toList /: a)((prev, x) =>
+      (prev zip prev.tail zip b).scanLeft(prev.head + 1) {
+        case (h, ((d, v), y)) => min(min(h + 1, v + 1), d + (if (x == y) 0 else 1))
+    }) last
+
+  }
+
+}
