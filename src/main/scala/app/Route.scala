@@ -4,6 +4,7 @@ package app
 
 import actors.LikeActor.SendLike
 import actors.RepoActor.{EntriesByLocation, EntryBySlug, EntryListSliceByDate, HashTagsBySearchString}
+import actors.SearchActor.{FindStuff, SearchActorRef, SearchResults}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.marshalling.ToResponseMarshaller
@@ -21,12 +22,14 @@ import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
   * Created by sebastian on 20.06.17.
   */
 class Route(
-    repoAct: ActorRef, lActor: ActorRef)(implicit system: ActorSystem, _ec: ExecutionContextExecutor, materializer: ActorMaterializer)
+    repoAct: ActorRef, lActor: ActorRef, sActor: SearchActorRef)(implicit system: ActorSystem, _ec: ExecutionContextExecutor, materializer: ActorMaterializer)
     extends RouterTrait {
   override implicit val ec: ExecutionContext = _ec
 
   val repoActor = repoAct
   override val likesActor: ActorRef = lActor
+  override val searchActor: SearchActorRef = sActor
+
 }
 
 trait AppJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
@@ -37,6 +40,7 @@ trait AppJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val bodyMarshaller = jsonFormat1(EntryBody)
 
   implicit val entryMarshaller = jsonFormat7(Entry)
+  implicit val searchResultFormat = jsonFormat2(SearchResults)
 }
 
 trait RouterTrait extends AppJsonSupport {
@@ -45,6 +49,7 @@ trait RouterTrait extends AppJsonSupport {
 
   val repoActor: ActorRef
   val likesActor: ActorRef
+  val searchActor: SearchActorRef
 
   val route = pathPrefix("v1") {
     pathPrefix("posts") {
@@ -88,8 +93,16 @@ trait RouterTrait extends AppJsonSupport {
           }
 
         }
+      } ~
+      path("find" / Segment) { searchstring: String =>
+        get {
+          completeWith(implicitly[ToResponseMarshaller[SearchResults]]) { com =>
+            searchActor.ref ? FindStuff(com, searchstring)
+          }
+
+        }
       }
-  } ~
+  }   ~
     pathPrefix("postassets") {
       encodeResponse {
         getFromDirectory(Conf.ENTRYDIR.dir)

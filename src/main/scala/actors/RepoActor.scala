@@ -1,16 +1,14 @@
 package actors
 
-import actors.CacheActor.{GetEntryList, GetHashTagList}
 import actors.LikeActor.GetLike
-import akka.actor.{Actor, ActorRef, ActorSystem}
-import akka.pattern.ask
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import akka.util.Timeout
-import repo.EntriesReadRepo.{Entry, EntryLocation, HashTag, HashTagStats}
+import repo.EntriesReadRepo.{Entry, EntryLocation, HashTag}
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success}
-import scala.concurrent.duration._
 
 trait EntryEnrichment {
   val _likesActor: ActorRef
@@ -35,6 +33,8 @@ trait EntryEnrichment {
 
 object RepoActor {
 
+  case class RepoActorRef(ref: ActorRef)
+
   //possible msgs:
   case class EntryBySlug(complete: Option[Entry] => Unit, slug: String)
   case class EntryListSliceByDate(complete: List[Entry] => Unit, startPost: Int, limit: Int)
@@ -42,13 +42,17 @@ object RepoActor {
   case class EntriesByLocation(complete: List[Entry] => Unit, location: EntryLocation)
   case class EntriesByTag(complete: List[Entry] => Unit, tag: String)
 
+  case class EntriesBySearchString(complete: List[Entry] => Unit, searchString: String)
+
   case class GetAllLocations(complete: List[EntryLocation] => Unit)
 
-  def Props(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: ActorSystem,
+  def props(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: ActorSystem,
                                                            _ec: ExecutionContextExecutor,
-                                                           materializer: ActorMaterializer): RepoActor = {
-    new RepoActor(cacheActorRef, likesActor)
+                                                           materializer: ActorMaterializer): Props = {
+    Props(new RepoActor(cacheActorRef, likesActor))
   }
+
+
 
 }
 
@@ -66,23 +70,28 @@ class RepoActor(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: 
   override def receive: Receive = {
 
     case EntryBySlug(complete, slug) =>
-      askForEntries.map(f => f.find(_.slug == slug)).flatMap(enrichEntryWithLikes).onComplete {
+      CacheActor.askForEntries(cacheActorRef).map(f => f.find(_.slug == slug)).flatMap(enrichEntryWithLikes).onComplete {
         case Success(a) => complete(a)
 
       }
 
+    case EntriesBySearchString(complete, searchString) =>
+      CacheActor.askForEntries(cacheActorRef).map(f => f.filter(p => p.body.text.contains(searchString))).onComplete {
+        case Success(a) => complete(a.toList)
+      }
+
     case EntryListSliceByDate(com, start, limit) =>
-      askForEntries.map(f => f.slice(start, start + limit)).flatMap(enrichEntriesWithLikes).onComplete {
+      CacheActor.askForEntries(cacheActorRef).map(f => f.slice(start, start + limit)).flatMap(enrichEntriesWithLikes).onComplete {
         case Success(a) => com(a.toList)
       }
 
     case EntriesByLocation(com, loc) =>
-      askForEntries.map(f => f.filter(_.location == loc)).flatMap(enrichEntriesWithLikes).onComplete {
+      CacheActor.askForEntries(cacheActorRef).map(f => f.filter(_.location == loc)).flatMap(enrichEntriesWithLikes).onComplete {
         case Success(a) => com(a.toList)
       }
 
     case HashTagsBySearchString(com, searchString) =>
-      val filteredTagsFut = askForHashTags.map(
+      val filteredTagsFut = CacheActor.askForHashTags(cacheActorRef).map(
         tagSeqs =>
           tagSeqs
             .map(f => f._1)
@@ -98,9 +107,6 @@ class RepoActor(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: 
 
   }
 
-  def askForEntries = (cacheActorRef ? GetEntryList()).asInstanceOf[Future[Seq[Entry]]]
-
-  def askForHashTags = (cacheActorRef ? GetHashTagList()).asInstanceOf[Future[Map[HashTag, HashTagStats]]]
 
   def levensthein(a: String, b: String): Int = {
     import scala.math.min

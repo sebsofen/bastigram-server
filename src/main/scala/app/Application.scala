@@ -1,6 +1,9 @@
 package app
 
-import actors.{CacheActor, LikeActor, RepoActor}
+import actors.CacheActor.CacheActorRef
+import actors.RepoActor.RepoActorRef
+import actors.SearchActor.SearchActorRef
+import actors.{CacheActor, LikeActor, RepoActor, SearchActor}
 import akka.actor.{ActorSystem, Props}
 import akka.http.scaladsl.Http
 import akka.stream.ActorMaterializer
@@ -17,11 +20,14 @@ object Application extends App {
   implicit private val timeout: Timeout = 10 seconds
 
   val cacheActor = system.actorOf(Props[CacheActor], name = "cacheActor")
+  val cacheActorRef = CacheActorRef(cacheActor)
 
   val likesActor = system.actorOf(Props[LikeActor], name = "likesActor")
 
-  val repoActor = system.actorOf(Props[RepoActor](RepoActor.Props(cacheActor,likesActor)), name = "repoActor")
+  val repoActor = system.actorOf(RepoActor.props(cacheActor,likesActor), name = "repoActor")
+  val repoActorRef = RepoActorRef(repoActor)
 
+  val searchActor = SearchActorRef(system.actorOf(SearchActor.props(cacheActorRef), name = "searchActor"))
 
   //a.onSuccess {
   //  case (a) => println("test123" + a)
@@ -33,7 +39,7 @@ object Application extends App {
 
   case class RebuildCache()
 
-  val router = new Route(repoActor,likesActor)
+  val router = new Route(repoActor,likesActor,searchActor )
 
   Http().bindAndHandle(router.route,
                        Conf.INTERFACE.interface,
