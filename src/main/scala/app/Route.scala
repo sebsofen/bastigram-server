@@ -114,6 +114,11 @@ trait RouterTrait extends AppJsonSupport {
         getFromDirectory(Conf.WEBDIR)
         //getFromFile()
       }
+    } ~
+    pathPrefix("") {
+      encodeResponse {
+       getFromFile(Conf.WEBDIR + "/index.html")
+      }
     }
 
 }

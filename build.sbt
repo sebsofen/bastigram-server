@@ -6,6 +6,10 @@ version := "1.0"
 
 scalaVersion := "2.11.8"
 
+//create native apps
+
+enablePlugins(JavaAppPackaging)
+
 
 libraryDependencies +="com.typesafe.akka" %% "akka-http" % "10.0.8"
 libraryDependencies += "com.typesafe.akka" %% "akka-http-spray-json" % "10.0.8"
