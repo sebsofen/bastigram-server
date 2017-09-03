@@ -1,6 +1,7 @@
 package actors
 
-import actors.LikeActor.GetLike
+import actors.likes.PostLikesMasterActor
+import actors.likes.PostLikesMasterActor.{GetLikesPost, PostLikesMasterActorRef}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import akka.util.Timeout
@@ -11,10 +12,10 @@ import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success}
 
 trait EntryEnrichment {
-  val _likesActor: ActorRef
+  val _likesActor: PostLikesMasterActorRef
 
   def enrichEntryWithLikes(entry: Entry)(implicit _ec: ExecutionContext): Future[Entry] = {
-    LikeActor.askGetLikes(_likesActor, GetLike(entry.slug)).map { likes =>
+    PostLikesMasterActor.askGetLikes(_likesActor, GetLikesPost(entry.slug)).map { likes =>
       entry.copy(likes = likes)
     }
   }
@@ -36,7 +37,7 @@ object RepoActor {
   case class RepoActorRef(ref: ActorRef)
 
   //possible msgs:
-  case class EntryBySlug(complete: Option[Entry] => Unit, slug: String)
+  case class EntryBySlug(slug: String)
   case class EntryListSliceByDate(complete: List[Entry] => Unit, startPost: Int, limit: Int)
   case class HashTagsBySearchString(complete: List[HashTag] => Unit, searchString: String)
   case class EntriesByLocation(complete: List[Entry] => Unit, location: EntryLocation)
@@ -46,18 +47,15 @@ object RepoActor {
 
   case class GetAllLocations(complete: List[EntryLocation] => Unit)
 
-  def props(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: ActorSystem,
+  def props(cacheActorRef: ActorRef, likesActor: PostLikesMasterActorRef)(implicit system: ActorSystem,
                                                            _ec: ExecutionContextExecutor,
                                                            materializer: ActorMaterializer): Props = {
     Props(new RepoActor(cacheActorRef, likesActor))
   }
 
-
-
 }
 
-
-class RepoActor(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: ActorSystem,
+class RepoActor(cacheActorRef: ActorRef, likesActor: PostLikesMasterActorRef)(implicit system: ActorSystem,
                                                                _ec: ExecutionContextExecutor,
                                                                materializer: ActorMaterializer)
     extends Actor
@@ -65,15 +63,23 @@ class RepoActor(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: 
   import RepoActor._
   implicit private val timeout: Timeout = 10 seconds
 
-  override val _likesActor: ActorRef = likesActor
+  override val _likesActor: PostLikesMasterActorRef = likesActor
 
   override def receive: Receive = {
 
-    case EntryBySlug(complete, slug) =>
-      CacheActor.askForEntries(cacheActorRef).map(f => f.find(_.slug == slug)).flatMap(enrichEntryWithLikes).onComplete {
-        case Success(a) => complete(a)
+    case EntryBySlug(slug) =>
+      val routeSender = sender()
+      CacheActor
+        .askForEntries(cacheActorRef)
+        .map(f => f.find(_.slug == slug))
+        .flatMap(enrichEntryWithLikes)
+        .onComplete {
+          case Success(a) =>
+            routeSender ! a
+          case _ =>
+            routeSender ! None
 
-      }
+        }
 
     case EntriesBySearchString(complete, searchString) =>
       CacheActor.askForEntries(cacheActorRef).map(f => f.filter(p => p.body.text.contains(searchString))).onComplete {
@@ -81,24 +87,51 @@ class RepoActor(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: 
       }
 
     case EntryListSliceByDate(com, start, limit) =>
-      CacheActor.askForEntries(cacheActorRef).map(f => f.slice(start, start + limit)).flatMap(enrichEntriesWithLikes).onComplete {
-        case Success(a) => com(a.toList)
-      }
+      CacheActor
+        .askForEntries(cacheActorRef)
+        .map(f => f.slice(start, start + limit))
+        .flatMap(enrichEntriesWithLikes)
+        .onComplete {
+          case Success(a) => com(a.toList)
+        }
 
     case EntriesByLocation(com, loc) =>
-      CacheActor.askForEntries(cacheActorRef).map(f => f.filter(_.location == loc)).flatMap(enrichEntriesWithLikes).onComplete {
-        case Success(a) => com(a.toList)
-      }
+      CacheActor
+        .askForEntries(cacheActorRef)
+        .map(f => f.filter(_.location == loc))
+        .flatMap(enrichEntriesWithLikes)
+        .onComplete {
+          case Success(a) =>
+            println(a)
+            com(a.toList)
+        }
+
+    case EntriesByTag(com, tag) =>
+      println(tag)
+      CacheActor
+        .askForEntries(cacheActorRef)
+        .map(f => {
+          val hTag = HashTag(tag)
+          f.filter(_.hashTags.contains(hTag))
+        })
+        .flatMap(enrichEntriesWithLikes)
+        .onComplete {
+          case Success(a) =>
+            println(a)
+            com(a.toList)
+        }
 
     case HashTagsBySearchString(com, searchString) =>
-      val filteredTagsFut = CacheActor.askForHashTags(cacheActorRef).map(
-        tagSeqs =>
-          tagSeqs
-            .map(f => f._1)
-            .toSeq
-            .map(tag => (levensthein(tag.tag, searchString).toDouble / (tag.tag.length + searchString.length), tag))
-            .sortBy(_._1)
-            .take(10))
+      val filteredTagsFut = CacheActor
+        .askForHashTags(cacheActorRef)
+        .map(
+          tagSeqs =>
+            tagSeqs
+              .map(f => f._1)
+              .toSeq
+              .map(tag => (levensthein(tag.tag, searchString).toDouble / (tag.tag.length + searchString.length), tag))
+              .sortBy(_._1)
+              .take(10))
 
       filteredTagsFut.onComplete {
         case Success(filteredTags) => com(filteredTags.map(f => f._2).toList)
@@ -106,7 +139,6 @@ class RepoActor(cacheActorRef: ActorRef, likesActor: ActorRef)(implicit system: 
       }
 
   }
-
 
   def levensthein(a: String, b: String): Int = {
     import scala.math.min

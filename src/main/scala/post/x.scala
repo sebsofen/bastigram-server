@@ -1,0 +1,5 @@
+package post
+
+class x {
+
+}

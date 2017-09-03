@@ -2,37 +2,36 @@ package app
 
 //critical for path directives etc
 
-import actors.LikeActor.SendLike
-import actors.RepoActor.{EntriesByLocation, EntryBySlug, EntryListSliceByDate, HashTagsBySearchString}
+import actors.RepoActor._
 import actors.SearchActor.{FindStuff, SearchActorRef, SearchResults}
-import akka.actor.{ActorRef, ActorSystem}
+import actors.likes.PostLikesMasterActor.PostLikesMasterActorRef
+import actors.likes.UserLikesActor.{UserDisLikeRecord, UserLikeRecord}
+import actors.likes.UserLikesMasterActor.{SetUserLikesPost, UserLikesMasterActorRef}
+import akka.actor.ActorRef
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.marshalling.ToResponseMarshaller
+import akka.http.scaladsl.model.{DateTime, HttpResponse}
+import akka.http.scaladsl.model.headers.HttpCookie
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server.Route
 import akka.pattern.ask
-import akka.stream.ActorMaterializer
 import akka.util.Timeout
 import repo.EntriesReadRepo._
 import spray.json.DefaultJsonProtocol
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 
-/**
-  * Created by sebastian on 20.06.17.
-  */
-class Route(
-    repoAct: ActorRef, lActor: ActorRef, sActor: SearchActorRef)(implicit system: ActorSystem, _ec: ExecutionContextExecutor, materializer: ActorMaterializer)
-    extends RouterTrait {
-  override implicit val ec: ExecutionContext = _ec
-
-  val repoActor = repoAct
-  override val likesActor: ActorRef = lActor
-  override val searchActor: SearchActorRef = sActor
-
+trait RestResponseProtocol {
+  case class RestSuccess(reason: String, message: String)
+  case class RestFailure(reason: String, message: String)
 }
 
-trait AppJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
+trait AppJsonSupport extends SprayJsonSupport with DefaultJsonProtocol with RestResponseProtocol {
+
+  implicit val restSuccessFormat = jsonFormat2(RestSuccess)
+  implicit val restFailureFormat = jsonFormat2(RestFailure)
+
   implicit val hashTagMarshaller = jsonFormat1(HashTag)
   implicit val imageMarshaller = jsonFormat1(EntryImage)
 
@@ -48,23 +47,62 @@ trait RouterTrait extends AppJsonSupport {
   implicit val timeout = Timeout(5 seconds)
 
   val repoActor: ActorRef
-  val likesActor: ActorRef
+  val likesActor: PostLikesMasterActorRef
   val searchActor: SearchActorRef
 
-  val route = pathPrefix("v1") {
-    pathPrefix("posts") {
-      path("by-slug" / Segment) { str: String =>
-        get {
-          completeWith(implicitly[ToResponseMarshaller[Option[Entry]]]) { completewithFunction =>
-            repoActor ? EntryBySlug(completewithFunction, str)
-          }
-        }
+  val userLikesMasterActor: UserLikesMasterActorRef
 
+  val route = pathPrefix("v1") {
+
+    pathPrefix("posts") {
+
+      pathPrefix("like") {
+
+        path("like" / Segment) { postSlug: String =>
+          post {
+            authenticated { userId =>
+              userLikesMasterActor.ref ! SetUserLikesPost(userId, postSlug, UserLikeRecord())
+              complete("setting user like")
+            }
+          }
+        } ~
+          path("dislike" / Segment) { postSlug: String =>
+            post {
+              authenticated { userId =>
+                userLikesMasterActor.ref ! SetUserLikesPost(userId, postSlug, UserDisLikeRecord())
+                complete("setting user like")
+              }
+            }
+          }
       } ~
-        path("by-location" / Segment / IntNumber / IntNumber) { (tag: String, start: Int, limit: Int) =>
+        path("by-slug" / Segment) { str: String =>
+          get {
+            onSuccess((repoActor ? EntryBySlug(str)).mapTo[Option[Entry]]) {
+              case Some(a) =>
+                completeWith(instanceOf[Entry]) { f =>
+                  f(a)
+                }
+              case _ =>
+                complete(HttpResponse(status = 404))
+            }
+
+          }
+
+        } ~
+        path("by-tag" / Segment / IntNumber / IntNumber) { (tag: String, start: Int, limit: Int) =>
           get {
             completeWith(implicitly[ToResponseMarshaller[List[Entry]]]) { com =>
-              (repoActor ? EntriesByLocation(com, EntryLocation(tag))).mapTo[List[Entry]].map(_.slice(start, limit))
+              (repoActor ? EntriesByTag(com, tag)).mapTo[List[Entry]].map(_.slice(start, limit))
+            }
+          }
+
+        } ~
+        path("by-location" / Segment / IntNumber / IntNumber) { (location: String, start: Int, limit: Int) =>
+          get {
+            completeWith(implicitly[ToResponseMarshaller[List[Entry]]]) { com =>
+              (repoActor ? EntriesByLocation(com, EntryLocation(location)))
+                .mapTo[List[Entry]]
+                .map(_.slice(start, limit))
             }
           }
 
@@ -74,11 +112,12 @@ trait RouterTrait extends AppJsonSupport {
             get {
               completeWith(implicitly[ToResponseMarshaller[List[Entry]]]) { com =>
                 val complete: List[Entry] => Unit = a => {
-                  a.foreach(entry => likesActor ! SendLike(entry.slug))
+                  //a.foreach(entry => likesActor.ref ! SendLike(entry.slug))
                   com(a)
                 }
 
                 repoActor ? EntryListSliceByDate(complete, start, stop)
+
               }
             }
           }
@@ -101,8 +140,16 @@ trait RouterTrait extends AppJsonSupport {
           }
 
         }
+      } ~
+      path("auth") {
+        get {
+          authenticated { userId =>
+            complete(RestSuccess("user-loggedin", userId))
+          }
+
+        }
       }
-  }   ~
+  } ~
     pathPrefix("postassets") {
       encodeResponse {
         getFromDirectory(Conf.ENTRYDIR.dir)
@@ -117,8 +164,31 @@ trait RouterTrait extends AppJsonSupport {
     } ~
     pathPrefix("") {
       encodeResponse {
-       getFromFile(Conf.WEBDIR + "/index.html")
+        getFromFile(Conf.WEBDIR + "/index.html")
       }
     }
+
+  /**
+    * authenticate user and create if not exists
+    * @param auther
+    * @return
+    */
+  def authenticated(auther: String => Route) = optionalCookie("userId") { optUserId =>
+    {
+      optUserId match {
+        case Some(userId) =>
+          //to nothing, because user is loggedin already?
+          auther(userId.value)
+        case None =>
+          val exp = Some(DateTime.now.+(10 * 365 * 86400 + 1000)) //expires in ten years
+          val newUserId = java.util.UUID.randomUUID.toString
+          setCookie(HttpCookie("userId", value = newUserId, expires = exp)) {
+            auther(newUserId)
+          }
+      }
+
+    }
+
+  }
 
 }
