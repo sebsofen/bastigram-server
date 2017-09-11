@@ -1,11 +1,13 @@
 package post.postentities
 
+import post.PostCompiler
 import v2.model.CompiledPost
 
 import scala.concurrent.Future
 
 trait PostEntityTrait {
 
+  def memOverride(old: PostEntityTrait) : PostEntityTrait = this
   /**
     * merge two post entity traits
     * @param pet
@@ -16,23 +18,39 @@ trait PostEntityTrait {
 
 trait PostEntityTraitMatcher {
 
-  /**
-    * prefix should be everything up to first whitespace in declaration, like:
-    * [dummy
-    * [gps
-    * [video
-    */
-  val prefix: String
-  def matchPost(matchString: String): Boolean
-  def postEntityFromInstruction(instruction: String, postCache: String => Option[CompiledPost]): Future[PostEntityTrait]
+  def matchPost(matchInstruction: PostCompiler.Instruction): Boolean
+  def postEntityFromInstruction(matchInstruction: PostCompiler.Instruction,
+                                postCache: String => Option[CompiledPost]): Future[(String, PostEntityTrait)]
 }
 
 /**
   * listing of possible post entity variable declarations
   */
 case object PostEntity {
-  val entityMatcherList: Seq[PostEntityTraitMatcher] = Seq(DummyPostEntity)
-  val entityMatcherMap: Map[String, PostEntityTraitMatcher] = entityMatcherList.map(f => f.prefix -> f).toMap
+  val entityMatcherList: Seq[PostEntityTraitMatcher] = Seq(DummyPostEntity, ImportStatementPostEntity, PostBodyEntity)
+
+
+  /**
+    * TODO: might be better placed in own trait
+    * @param str
+    * @return
+    */
+  def strToArgList(str: String): Map[String, String] = {
+    str
+      .stripPrefix("[")
+      .stripSuffix("]")
+      .split(" ")
+      .filter(p => p.split("=").length == 2)
+      .map { s =>
+        val argVal = s.split("=")
+        argVal(0).toLowerCase() -> argVal(1)
+      }
+      .toMap
+  }
+
 }
 
-class InvalidOperandExeption extends Exception
+abstract class PostException extends Exception
+class InvalidOperandExeption extends PostException
+class PostNotFoundException extends PostException
+class MissingStatementException extends PostException

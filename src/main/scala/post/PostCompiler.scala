@@ -1,13 +1,14 @@
 package post
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.Sink
 import post.PostCompiler.VariableMemory
 import post.postentities.{PostEntity, PostEntityTrait}
-import repo.EntriesReadRepo.EntryBody
 import v2.model.CompiledPost
+import v2.sources.PlainPostSource.PlainPost
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 
 object PostCompiler {
   type VariableMemory = Map[String, PostEntityTrait]
@@ -65,7 +66,7 @@ object PostCompiler {
       val variableAndDeclaration = f.stripPrefix("#val").split("=")
 
       val variable = variableAndDeclaration.head.replace(" ", "")
-      val declaration = variableAndDeclaration.tail.mkString("=")
+      val declaration = variableAndDeclaration.tail.mkString("=").split(" ").filter(_ != "").mkString(" ")
       VariableDeclaration(variable, declaration)
     case f if f.startsWith("#") =>
       ??? //TODO : IMPLEMENT FUNCTION CALL
@@ -83,32 +84,38 @@ object PostCompiler {
       instruction: Instruction,
       memory: VariableMemory,
       postCache: String => Option[CompiledPost])(implicit ec: ExecutionContext): Future[(String, PostEntityTrait)] = {
-    instruction match {
-      case vd: VariableDeclaration =>
-        val entityMatcher = PostEntity.entityMatcherList.filter(_.matchPost(vd.statement)).head
-        entityMatcher.postEntityFromInstruction(vd.statement, postCache).map(pet => (vd.variable, pet))
-    }
+    println(instruction)
+    val entityMatcher = PostEntity.entityMatcherList.filter(_.matchPost(instruction)).head
+    entityMatcher.postEntityFromInstruction(instruction, postCache)
 
   }
 
 }
 
-class PostCompiler() {
+class PostCompiler()(implicit system: ActorSystem, ec: ExecutionContextExecutor, materializer: ActorMaterializer) {
 
-  def compile(body: Source[String, NotUsed], postCache: String => Option[CompiledPost]): Future[EntryBody] = {
+  def compile(post: PlainPost, postCache: String => Option[CompiledPost]): Future[CompiledPost] = {
 
-    val a: VariableMemory = Map()
+    val a: (VariableMemory, String) = (Map(), "")
 
-    body.map(PostCompiler.lineToInstruction).foldAsync(a) {
-      case (varMem, instruction) =>
-        PostCompiler.instructionToPostEntity(instruction, varMem, postCache).map {
-          case (varName, postEntity) =>
-            varMem + (varName -> postEntity)
-        }
+    post.postBody
+      .foldAsync(a) {
+        case ((varMem, postBody), line) =>
+          val newPostBody = postBody + "\n" + line
+          val instruction = PostCompiler.lineToInstruction(line)
+          PostCompiler.instructionToPostEntity(instruction, varMem, postCache).map {
+            case (varName, postEntity) =>
+              if (varMem.contains(varName)) {
+                (varMem + (varName -> postEntity.memOverride(varMem(varName))), newPostBody)
+              } else {
+                (varMem + (varName -> postEntity), newPostBody)
+              }
 
-    }
+          }
+      }
+      .runWith(Sink.head)
+      .map { case (mem, postBody) => CompiledPost(post.slug, postBody, mem) }
 
-    ???
   }
 
 }

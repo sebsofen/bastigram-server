@@ -33,15 +33,31 @@ class UserLikesActor(userId: String, bus: LikesBus) extends Actor {
 }
 
 object UserLikesActor {
+  val USER_LIKE_STR = "1"
+  val USER_DISLIKE_STR = "0"
   def props(userId: String, bus: LikesBus): Props = Props(new UserLikesActor(userId, bus))
 
   abstract class LikeRecord
-  case class UserLikeRecord() extends LikeRecord
-  case class UserDisLikeRecord() extends LikeRecord
-  case class UserLikeNoRecord() extends LikeRecord
+  case class UserLikeRecord() extends LikeRecord {
+    override def toString() = USER_LIKE_STR
+  }
+  case class UserDisLikeRecord() extends LikeRecord {
+    override def toString() = USER_DISLIKE_STR
+  }
+  case class UserLikeNoRecord() extends LikeRecord {
+    override def toString() = ""
+  }
 
   case class GetLiked(slug: String)
   case class SetLiked(slug: String)
   case class SetLikedClass(slug: String, liked: LikeRecord)
   case class SetDisliked(slug: String)
+
+  case object LikeRecord {
+    def props(like: String) = like match {
+      case USER_LIKE_STR => UserLikeRecord()
+      case USER_DISLIKE_STR => UserDisLikeRecord()
+      case _ => UserLikeNoRecord()
+    }
+  }
 }

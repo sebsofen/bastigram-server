@@ -26,6 +26,8 @@ class LikesBus extends EventBus with ScanningClassification {
 
 object LikesBus {
   case class UserPostLike(userId: String, postSlug: String, like: LikeRecord)
+
+
 }
 
 trait LikesClassifier {
