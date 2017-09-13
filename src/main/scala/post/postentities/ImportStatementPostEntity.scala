@@ -23,7 +23,7 @@ case object ImportStatementPostEntity extends PostEntityTraitMatcher {
     */
   override def postEntityFromInstruction(
       matchInstruction: PostCompiler.Instruction,
-      postCache: (String) => Option[CompiledPost]): Future[(String, PostEntityTrait)] = {
+      postCache: (String) => Option[CompiledPost], postSlug: String): Future[(String, PostEntityTrait)] = {
     val inst = matchInstruction.asInstanceOf[FromImportAsInst]
 
     postCache(inst.from) match {

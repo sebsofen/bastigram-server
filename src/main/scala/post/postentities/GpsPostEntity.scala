@@ -14,6 +14,7 @@ package post.postentities
        throw new InvalidOperandExeption
    }
 
+   override def typeDesc(): String = "GPS"
  }
 
 case class LatLon(lat: Double, lon: Double)

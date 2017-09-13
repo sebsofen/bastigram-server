@@ -15,7 +15,7 @@ import repo.EntriesReadRepo
 
 import scala.concurrent.duration._
 
-object Application extends App with RouterTrait {
+object Application extends RouterTrait {
   implicit val system = ActorSystem()
   implicit val materializer = ActorMaterializer()
   override implicit val ec = system.dispatcher

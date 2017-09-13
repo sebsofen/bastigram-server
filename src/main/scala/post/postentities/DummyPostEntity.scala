@@ -8,7 +8,6 @@ import scala.concurrent.Future
 
 case object DummyPostEntity extends PostEntityTraitMatcher {
   override def matchPost(matchInstruction: PostCompiler.Instruction): Boolean = {
-    println(matchInstruction)
     matchInstruction match {
       case VariableDeclaration(variable, statement) if statement.startsWith("[dummy") => true
       case _                                                                          => false
@@ -17,11 +16,11 @@ case object DummyPostEntity extends PostEntityTraitMatcher {
 
   override def postEntityFromInstruction(
       matchInstruction: PostCompiler.Instruction,
-      postCache: (String) => Option[CompiledPost]): Future[(String, PostEntityTrait)] = {
+      postCache: (String) => Option[CompiledPost],postSlug: String): Future[(String, PostEntityTrait)] = {
 
     val inst = matchInstruction.asInstanceOf[VariableDeclaration]
 
-    PostEntity.strToArgList(inst.statement).get("text") match {
+    PostEntity.strToArgMap(inst.statement).get("text") match {
       case None       => Future.failed(new MissingStatementException)
       case Some(text) => Future.successful((inst.variable, DummyPostEntity(text)))
     }
@@ -43,4 +42,6 @@ case class DummyPostEntity(text: String = "") extends PostEntityTrait {
     case _ =>
       throw new InvalidOperandExeption
   }
+
+  override def typeDesc(): String = "DUMMY"
 }

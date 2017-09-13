@@ -6,7 +6,7 @@ import actors.likes.LikesBus.UserPostLike
 import actors.likes.UserLikesActor.LikeRecord
 import actors.likes.{AllLikesClassifier, LikesBus}
 import akka.Done
-import akka.actor.{Actor, ActorSystem}
+import akka.actor.{Actor, ActorSystem, Props}
 import akka.stream.scaladsl.{FileIO, Framing, Sink, Source}
 import akka.stream.{ActorAttributes, ActorMaterializer, Supervision}
 import akka.util.ByteString
@@ -18,6 +18,12 @@ import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
+object PersistentPostLikesActor {
+  def props(likesBus: LikesBus, settings: PersistentPostLikesActorSettings)(
+    implicit system: ActorSystem,
+    _ec: ExecutionContextExecutor,
+    materializer: ActorMaterializer) : Props =  Props(new PersistentPostLikesActor(likesBus,settings))
+}
 
 class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikesActorSettings)(
     implicit system: ActorSystem,
@@ -49,13 +55,16 @@ class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikes
     .queue[CompiledPost](bufferSize, overflowStrategy)
     .flatMapConcat(p => readLikesFromFile(p.slug))
     .withAttributes(ActorAttributes.supervisionStrategy(decider))
-    .to(Sink.foreach(like => likesBus publish like))
+    .to(Sink.foreach(like => {
+      likesBus publish like
+    }))
     .run()
 
   val likesSaveQueue =
     Source
       .queue[PostSlug](bufferSize, overflowStrategy)
       .mapAsync(1) { case (slug) => saveLikesToFile(slug) }
+      .withAttributes(ActorAttributes.supervisionStrategy(decider))
       .to(Sink.ignore)
       .run()
 
@@ -74,12 +83,13 @@ class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikes
     val file = Paths.get(settings.LIKES_DIR, slug)
     likesBuffer.get(slug) match {
       case Some(likes) =>
-        Source
+        val a = Source
           .fromIterator(() => likes.toIterator)
           .map { case (id, like) => id + "," + like.toString + "\n" }
           .map(ByteString(_))
           .runWith(FileIO.toPath(file))
 
+        a
       case _ =>
         Future.successful(Done)
     }
@@ -93,6 +103,7 @@ class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikes
       .via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 1024, allowTruncation = true))
       .map(_.utf8String)
       .map { line =>
+
         val cols = line.split(",")
         UserPostLike(cols(0), slug, LikeRecord.props(cols(1)))
       }
@@ -107,3 +118,4 @@ case class PersistentPostLikesActorSettings(config: Config) {
   val LIKES_DIR = M_CONFIG.getString("dir")
   val SAVE_INTERVAL = M_CONFIG.getInt("savensecs")
 }
+

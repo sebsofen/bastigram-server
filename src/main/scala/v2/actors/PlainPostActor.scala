@@ -7,6 +7,7 @@ import v2.busses.PlainPostBus
 import v2.sources.PlainPostSource
 
 import scala.concurrent.ExecutionContextExecutor
+import scala.concurrent.duration._
 
 object PlainPostActor {
   def props(plainPostBus: PlainPostBus, plainPostSource: PlainPostSource)(implicit system: ActorSystem,
@@ -30,11 +31,17 @@ class PlainPostActor(plainPostBus: PlainPostBus, plainPostSource: PlainPostSourc
     self ! Refresh()
   }
 
+  //TODO: make configurable
+  system.scheduler.schedule(10 second, 10 seconds, self, Refresh())
+
+
   override def receive: Receive = {
 
     case Refresh() =>
+      println("read files from file")
       plainPostSource.postSource().runForeach { plainPost =>
         //send out to bus?
+
         plainPostBus.publish(plainPost)
 
       }

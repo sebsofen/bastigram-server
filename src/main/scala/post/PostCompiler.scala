@@ -3,6 +3,7 @@ package post
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Sink
+import com.typesafe.scalalogging.Logger
 import post.PostCompiler.VariableMemory
 import post.postentities.{PostEntity, PostEntityTrait}
 import v2.model.CompiledPost
@@ -68,9 +69,8 @@ object PostCompiler {
       val variable = variableAndDeclaration.head.replace(" ", "")
       val declaration = variableAndDeclaration.tail.mkString("=").split(" ").filter(_ != "").mkString(" ")
       VariableDeclaration(variable, declaration)
-    case f if f.startsWith("#") =>
-      ??? //TODO : IMPLEMENT FUNCTION CALL
-    // abc(...
+    case f =>
+      NopInst(f)
   }
 
   /**
@@ -83,27 +83,29 @@ object PostCompiler {
   def instructionToPostEntity(
       instruction: Instruction,
       memory: VariableMemory,
-      postCache: String => Option[CompiledPost])(implicit ec: ExecutionContext): Future[(String, PostEntityTrait)] = {
-    println(instruction)
+      postCache: String => Option[CompiledPost], postSlug: String)(implicit ec: ExecutionContext): Future[(String, PostEntityTrait)] = {
     val entityMatcher = PostEntity.entityMatcherList.filter(_.matchPost(instruction)).head
-    entityMatcher.postEntityFromInstruction(instruction, postCache)
+    entityMatcher.postEntityFromInstruction(instruction, postCache,postSlug)
 
   }
 
 }
 
 class PostCompiler()(implicit system: ActorSystem, ec: ExecutionContextExecutor, materializer: ActorMaterializer) {
+  val logger = Logger(classOf[PostCompiler])
 
   def compile(post: PlainPost, postCache: String => Option[CompiledPost]): Future[CompiledPost] = {
+    logger.debug("compiling post " + post.slug)
 
-    val a: (VariableMemory, String) = (Map(), "")
+    val zero: (VariableMemory, String) = (Map(), "")
 
     post.postBody
-      .foldAsync(a) {
+      .foldAsync(zero) {
         case ((varMem, postBody), line) =>
           val newPostBody = postBody + "\n" + line
           val instruction = PostCompiler.lineToInstruction(line)
-          PostCompiler.instructionToPostEntity(instruction, varMem, postCache).map {
+
+          PostCompiler.instructionToPostEntity(instruction, varMem, postCache, post.slug).map {
             case (varName, postEntity) =>
               if (varMem.contains(varName)) {
                 (varMem + (varName -> postEntity.memOverride(varMem(varName))), newPostBody)
