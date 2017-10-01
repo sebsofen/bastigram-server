@@ -2,6 +2,7 @@ package v2.busses
 
 import akka.actor.ActorRef
 import akka.event.{EventBus, ScanningClassification}
+import post.postentities.MapPostEntity
 import v2.busses.CompiledPostBus.CompiledPostClassifier
 import v2.model.CompiledPost
 
@@ -26,5 +27,22 @@ object CompiledPostBus {
 
   case class AllCompiledPostClassifier() extends CompiledPostClassifier {
     override def classify(plainPost: CompiledPost): Boolean = true
+  }
+
+  case class PostByLocationClassifier(mapPostEntity: MapPostEntity) extends CompiledPostClassifier {
+    override def classify(plainPost: CompiledPost): Boolean =
+      plainPost.getLocation().isDefined && plainPost.getLocation().get.equals(mapPostEntity)
+  }
+
+  case class PostByLocationNameClassifier(name: String) extends CompiledPostClassifier {
+    override def classify(compiledPost: CompiledPost): Boolean = {
+      compiledPost.getLocation().isDefined && compiledPost.getLocation().get.name.get == name
+
+    }
+
+  }
+
+  case class PostSlugSetClassifier(set: Set[String]) extends CompiledPostClassifier {
+    override def classify(plainPost: CompiledPost): Boolean = set.contains(plainPost.slug)
   }
 }

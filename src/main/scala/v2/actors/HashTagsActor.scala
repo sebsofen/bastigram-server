@@ -1,8 +1,8 @@
 package v2.actors
 
 import akka.actor.{Actor, ActorSystem, Props}
-import akka.stream.{ActorMaterializer, Supervision}
-import v2.actors.HashTagsActor.SearchHashTag
+import akka.stream.ActorMaterializer
+import v2.actors.HashTagsActor.{GetPostsForHashTag, SearchHashTag}
 import v2.model.CompiledPost
 import v2.utils.TextProcessing
 
@@ -14,6 +14,7 @@ object HashTagsActor {
   def props()(implicit system: ActorSystem, ec: ExecutionContextExecutor, materializer: ActorMaterializer): Props =
     Props(new HashTagsActor)
   case class SearchHashTag(tag: String, limit: Int = 10)
+  case class GetPostsForHashTag(tag:String)
 
 }
 
@@ -22,11 +23,9 @@ class HashTagsActor()(implicit system: ActorSystem, ec: ExecutionContextExecutor
     with TextProcessing {
 
   val buffer = mutable.HashMap[String, HashTagStats]()
+  val hashTagAndPostsBuffer = mutable.HashMap[String, Set[String]]()
 
-  val decider: Supervision.Decider = {
-    case _ => Supervision.Resume
 
-  }
 
   val bufferSize = 1000
 
@@ -43,6 +42,10 @@ class HashTagsActor()(implicit system: ActorSystem, ec: ExecutionContextExecutor
             //hashTagQueue offer hashTag
             val oldStats = buffer.getOrElse(hashTag, HashTagStatsBuilder.emptyStats())
             buffer += hashTag -> (HashTagStats(1) + oldStats)
+
+
+            val oldSet = hashTagAndPostsBuffer.getOrElse(hashTag,Set())
+            hashTagAndPostsBuffer += hashTag -> (oldSet + p.slug)
           }
         case _ =>
       }
@@ -51,6 +54,8 @@ class HashTagsActor()(implicit system: ActorSystem, ec: ExecutionContextExecutor
       sender() ! buffer.toList.sortBy { case (tag, stats) => levensthein(searchString, tag) }.take(limit).map {
         case (tag, stat) => HashTagAndStats(tag, stat)
       }
+    case GetPostsForHashTag(tag) =>
+      sender() ! hashTagAndPostsBuffer.getOrElse(tag,Set())
   }
 }
 

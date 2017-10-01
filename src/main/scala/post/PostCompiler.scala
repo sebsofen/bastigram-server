@@ -80,12 +80,12 @@ object PostCompiler {
     * @param ec
     * @return
     */
-  def instructionToPostEntity(
-      instruction: Instruction,
-      memory: VariableMemory,
-      postCache: String => Option[CompiledPost], postSlug: String)(implicit ec: ExecutionContext): Future[(String, PostEntityTrait)] = {
+  def instructionToPostEntity(instruction: Instruction,
+                              memory: VariableMemory,
+                              postCache: String => Option[CompiledPost],
+                              postSlug: String)(implicit ec: ExecutionContext): Future[(String, PostEntityTrait)] = {
     val entityMatcher = PostEntity.entityMatcherList.filter(_.matchPost(instruction)).head
-    entityMatcher.postEntityFromInstruction(instruction, postCache,postSlug)
+    entityMatcher.postEntityFromInstruction(instruction, postCache, postSlug)
 
   }
 
@@ -99,7 +99,7 @@ class PostCompiler()(implicit system: ActorSystem, ec: ExecutionContextExecutor,
 
     val zero: (VariableMemory, String) = (Map(), "")
 
-    post.postBody
+    val postFut = post.postBody
       .foldAsync(zero) {
         case ((varMem, postBody), line) =>
           val newPostBody = postBody + "\n" + line
@@ -116,8 +116,11 @@ class PostCompiler()(implicit system: ActorSystem, ec: ExecutionContextExecutor,
           }
       }
       .runWith(Sink.head)
-      .map { case (mem, postBody) => CompiledPost(post.slug, postBody, mem) }
+      .map { case (mem, postBody) => CompiledPost(post.slug, postBody, mem, post) }
 
+    postFut.onFailure{case f => f.printStackTrace()}
+
+    postFut
   }
 
 }

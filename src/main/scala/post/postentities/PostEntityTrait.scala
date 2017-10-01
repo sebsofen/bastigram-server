@@ -30,7 +30,7 @@ trait PostEntityTraitMatcher {
   */
 case object PostEntity {
   val entityMatcherList: Seq[PostEntityTraitMatcher] =
-    Seq(DummyPostEntity, ImportStatementPostEntity, PostBodyEntity, ListPostEntity, ImagePostEntity, DatePostEntity)
+    Seq(DummyPostEntity, ImportStatementPostEntity, PostBodyEntity, ListPostEntity, ImagePostEntity, DatePostEntity, MapPostEntity)
 
   /**
     * TODO: might be better placed in own trait

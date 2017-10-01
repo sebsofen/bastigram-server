@@ -3,6 +3,7 @@ package v2.actors
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
+import com.typesafe.scalalogging.Logger
 import v2.busses.PlainPostBus
 import v2.sources.PlainPostSource
 
@@ -26,6 +27,8 @@ class PlainPostActor(plainPostBus: PlainPostBus, plainPostSource: PlainPostSourc
     extends Actor {
   import PlainPostActor._
 
+  val logger = Logger(classOf[PlainPostActor])
+
   //trigger self refresh on start
   if (refreshOnCreation) {
     self ! Refresh()
@@ -38,7 +41,7 @@ class PlainPostActor(plainPostBus: PlainPostBus, plainPostSource: PlainPostSourc
   override def receive: Receive = {
 
     case Refresh() =>
-      println("read files from file")
+
       plainPostSource.postSource().runForeach { plainPost =>
         //send out to bus?
 

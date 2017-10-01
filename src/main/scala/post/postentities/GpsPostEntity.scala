@@ -17,6 +17,6 @@ package post.postentities
    override def typeDesc(): String = "GPS"
  }
 
-case class LatLon(lat: Double, lon: Double)
+
 case class GpsPOI(latLon: LatLon, title: String, icon: String)
 case class GpsTrack(latLons: List[LatLon], title: String)

@@ -15,5 +15,5 @@ trait PlainPostSource {
 
 object PlainPostSource {
   //todo: Future[IOResult] should be replaced with NotUsed
-  case class PlainPost(slug: String, postBody: Source[String,Any])
+  case class PlainPost(slug: String, postBody: Source[String,Any],listed: Boolean = true)
 }

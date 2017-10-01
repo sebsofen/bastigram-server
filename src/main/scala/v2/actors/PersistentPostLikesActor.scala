@@ -7,11 +7,11 @@ import actors.likes.UserLikesActor.LikeRecord
 import actors.likes.{AllLikesClassifier, LikesBus}
 import akka.Done
 import akka.actor.{Actor, ActorSystem, Props}
+import akka.stream.alpakka.file.scaladsl.Directory
 import akka.stream.scaladsl.{FileIO, Framing, Sink, Source}
 import akka.stream.{ActorAttributes, ActorMaterializer, Supervision}
 import akka.util.ByteString
 import com.typesafe.config.Config
-import v2.model.CompiledPost
 
 import scala.collection.immutable.HashMap
 import scala.collection.mutable
@@ -19,10 +19,10 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
 object PersistentPostLikesActor {
-  def props(likesBus: LikesBus, settings: PersistentPostLikesActorSettings)(
-    implicit system: ActorSystem,
-    _ec: ExecutionContextExecutor,
-    materializer: ActorMaterializer) : Props =  Props(new PersistentPostLikesActor(likesBus,settings))
+  def props(likesBus: LikesBus, settings: PersistentPostLikesActorSettings)(implicit system: ActorSystem,
+                                                                            _ec: ExecutionContextExecutor,
+                                                                            materializer: ActorMaterializer): Props =
+    Props(new PersistentPostLikesActor(likesBus, settings))
 }
 
 class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikesActorSettings)(
@@ -46,19 +46,9 @@ class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikes
   val overflowStrategy = akka.stream.OverflowStrategy.dropHead
   val decider: Supervision.Decider = {
     case e: Exception =>
-      println("ERROR IN PERSISTENTPOSTLIKESACTOR")
       e.printStackTrace()
       Supervision.Resume
   }
-
-  val queue = Source
-    .queue[CompiledPost](bufferSize, overflowStrategy)
-    .flatMapConcat(p => readLikesFromFile(p.slug))
-    .withAttributes(ActorAttributes.supervisionStrategy(decider))
-    .to(Sink.foreach(like => {
-      likesBus publish like
-    }))
-    .run()
 
   val likesSaveQueue =
     Source
@@ -69,7 +59,17 @@ class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikes
       .run()
 
   override def receive: Receive = {
-    case post: CompiledPost => queue.offer(post)
+
+    case ReadLikesFromDir() =>
+      Directory
+        .ls(Paths.get(settings.LIKES_DIR))
+        .flatMapConcat(p => readLikesFromFile(p.getFileName.toString))
+        .withAttributes(ActorAttributes.supervisionStrategy(decider))
+        .to(Sink.foreach(like => {
+          likesBus publish like
+        }))
+        .run()
+
 
     case like: UserPostLike =>
       val likesList = likesBuffer.getOrElse(like.postSlug, HashMap())
@@ -103,7 +103,6 @@ class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikes
       .via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 1024, allowTruncation = true))
       .map(_.utf8String)
       .map { line =>
-
         val cols = line.split(",")
         UserPostLike(cols(0), slug, LikeRecord.props(cols(1)))
       }
@@ -112,10 +111,10 @@ class PersistentPostLikesActor(likesBus: LikesBus, settings: PersistentPostLikes
 }
 
 case class SaveLikesToDisk()
+case class ReadLikesFromDir()
 
 case class PersistentPostLikesActorSettings(config: Config) {
   val M_CONFIG = config.getConfig("likesstore")
   val LIKES_DIR = M_CONFIG.getString("dir")
   val SAVE_INTERVAL = M_CONFIG.getInt("savensecs")
 }
-

@@ -8,14 +8,18 @@ import akka.pattern.ask
 import akka.stream.ActorMaterializer
 import akka.util.Timeout
 import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.scalalogging.Logger
 import post.PostCompiler
-import v2.actors.HashTagsActor.SearchHashTag
-import v2.actors.PostLikesReadActor.{GetPostLikeCounts, GetUserLikePost}
+import post.postentities.MapPostEntity
+import v2.actors.HashTagsActor.{GetPostsForHashTag, SearchHashTag}
+import v2.actors.LocationCacheActor.GetLocations
+import v2.actors.PostLikesReadActor.{GerUserLikes, GetPostLikeCounts, GetUserLikePost}
 import v2.actors.PostLikesWriteActor.{DisLikePost, LikePost, LikePostIfNotExists}
 import v2.actors._
-import v2.busses.CompiledPostBus.AllCompiledPostClassifier
+import v2.busses.CompiledPostBus.{AllCompiledPostClassifier, PostSlugSetClassifier}
 import v2.busses.PlainPostBus.AllPlainPostClassifier
 import v2.busses.{CompiledPostBus, PlainPostBus}
+import v2.filters.AllLocationsFilter
 import v2.model.CompiledPost
 import v2.sources.{PlainPostSourceFromDir, PlainPostSourceFromDirSettings}
 
@@ -23,6 +27,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 
 object NewApp extends App with NewRoute {
+  val logger = Logger(classOf[App])
 
   implicit val system = ActorSystem()
   implicit val materializer = ActorMaterializer()
@@ -44,6 +49,10 @@ object NewApp extends App with NewRoute {
     system.actorOf(PostCompilerActor.props(postCompiler, compiledPostBus), name = "postCompilerActor")
   plainPostBus.subscribe(postCompilerActor, AllPlainPostClassifier())
 
+  //locations actor
+  val locationsActor = system.actorOf(LocationCacheActor.props(), name = "locatiosnActor")
+  compiledPostBus.subscribe(locationsActor, AllCompiledPostClassifier())
+
   //likes actor
   val likesBus = new LikesBus()
 
@@ -56,8 +65,7 @@ object NewApp extends App with NewRoute {
   val persistentPostLikesActor = system.actorOf(
     PersistentPostLikesActor.props(likesBus, persistentPostLikesActorSettings),
     name = "persistentPostLikesActor")
-
-  compiledPostBus.subscribe(persistentPostLikesActor, AllCompiledPostClassifier())
+  persistentPostLikesActor ! ReadLikesFromDir()
 
   //hashtags actor
   val hashTagsActor = system.actorOf(HashTagsActor.props(), name = "hashTagsActor")
@@ -84,6 +92,16 @@ object NewApp extends App with NewRoute {
 
   }
 
+  def getPostByTag(offset: Int,
+                   limit: Int,
+                   tag: String,
+                   sorter: (CompiledPost, CompiledPost) => Boolean): Future[List[CompiledPost]] = {
+    (hashTagsActor ? GetPostsForHashTag(tag)).mapTo[Set[String]].flatMap { set =>
+      (postCompilerActor ? GetPostListFilteredAndSorted(offset, limit, PostSlugSetClassifier(set), sorter))
+        .mapTo[List[CompiledPost]]
+    }
+  }
+
   override def getLikeRecord(userId: String, postSlug: String): Future[Any] = {
     (postLikesReadActor ? GetUserLikePost(userId, postSlug))
   }
@@ -102,6 +120,35 @@ object NewApp extends App with NewRoute {
   override def getLikeCountBySlug(postSlug: String): Future[Int] = {
     (postLikesReadActor ? GetPostLikeCounts(postSlug)).mapTo[Int]
   }
+
+  override def getLikedPostsByUser(offset: Int,
+                                   limit: Int,
+                                   userId: String,
+                                   sorter: (CompiledPost, CompiledPost) => Boolean): Future[List[CompiledPost]] = {
+    (postLikesReadActor ? GerUserLikes(userId)).mapTo[Seq[String]].flatMap {
+      case postSlugs =>
+        logger.debug("received my user likes " + postSlugs.mkString(" "))
+        (postCompilerActor ? GetPostListFilteredAndSorted(offset,
+                                                          limit,
+                                                          PostSlugSetClassifier(postSlugs.toSet),
+                                                          sorter))
+          .mapTo[List[CompiledPost]]
+
+    }
+  }
+
+  override def getLocations(filter: AllLocationsFilter): Future[Seq[MapPostEntity]] =
+    (locationsActor ? GetLocations(filter)).mapTo[Seq[MapPostEntity]]
+
+  override def getPostsFilteredAndSorted(
+      offset: Int,
+      limit: Int,
+      filter: CompiledPostBus.CompiledPostClassifier,
+      sorter: (CompiledPost, CompiledPost) => Boolean): Future[List[CompiledPost]] = {
+    (postCompilerActor ? GetPostListFilteredAndSorted(offset, limit, filter, sorter))
+      .mapTo[List[CompiledPost]]
+  }
+
 }
 
 case class ApplicationConfig(config: Config) {

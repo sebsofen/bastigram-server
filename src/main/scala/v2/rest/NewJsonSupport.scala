@@ -14,6 +14,8 @@ trait NewJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
 
   implicit val postBodyEntityFormat = jsonFormat(PostBodyEntity.apply(_), "body")
   implicit val imagePostEntityFormat = jsonFormat(ImagePostEntity.apply(_), "imgs")
+  implicit val latLonFormat = jsonFormat2(LatLon)
+  implicit val mapPostEntityFormat = jsonFormat3(MapPostEntity.apply)
   implicit val listPostEntityFormat = jsonFormat(ListPostEntity.apply(_), "list")
   implicit val datePostEntityFormat = jsonFormat(DatePostEntity.apply(_), "timestamp")
 
@@ -26,6 +28,7 @@ trait NewJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
         case imagePostEntity: ImagePostEntity => imagePostEntityFormat.write(imagePostEntity)
         case listPostentity: ListPostEntity   => listPostEntityFormat.write(listPostentity)
         case datePostEntity: DatePostEntity   => datePostEntityFormat.write(datePostEntity)
+        case mapPostEntity: MapPostEntity   => mapPostEntityFormat.write(mapPostEntity)
         case _                                => ??? //TODO: ADD MORE
       }
 

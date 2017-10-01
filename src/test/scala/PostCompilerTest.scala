@@ -1,9 +1,11 @@
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.Source
 import post.PostCompiler._
 import post.postentities.DummyPostEntity
 import spec.BaseSpec
 import v2.model.CompiledPost
+import v2.sources.PlainPostSource.PlainPost
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext}
@@ -46,7 +48,7 @@ class PostCompilerTest extends BaseSpec {
 
     "create a variable that is importet from another post" in {
       //read post
-      val compiledPost = CompiledPost("dummy", "123", Map("dummy" -> DummyPostEntity("'bla'")))
+      val compiledPost = CompiledPost("dummy", "123", Map("dummy" -> DummyPostEntity("'bla'")), PlainPost("",Source.empty,false))
       def postCache(string: String): Option[CompiledPost] = string match {
         case "dummy" => Some(compiledPost)
         case _       => None

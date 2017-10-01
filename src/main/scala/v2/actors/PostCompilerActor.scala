@@ -6,6 +6,7 @@ import akka.stream.{ActorAttributes, ActorMaterializer, Supervision}
 import post.PostCompiler
 import post.postentities.PostException
 import v2.busses.CompiledPostBus
+import v2.busses.CompiledPostBus.CompiledPostClassifier
 import v2.model.CompiledPost
 import v2.sources.PlainPostSource.PlainPost
 
@@ -57,15 +58,24 @@ class PostCompilerActor(postCompiler: PostCompiler, compiledPostBus: CompiledPos
 
     case GetPostListSorted(offset, limit, comparer) =>
       sender() ! getPostListSorted(comparer).drop(offset).take(limit)
+    case GetPostListFilteredAndSorted(offset, limit, filter, comparer) =>
+      sender() ! getPostListSorted(comparer).filter(filter.classify).drop(offset).take(limit)
+
   }
 
   def getPostBySlug(slug: String): Option[CompiledPost] = postsCacheMap.get(slug)
 
   def getPostListSorted(comparer: (CompiledPost, CompiledPost) => Boolean): List[CompiledPost] =
-    postsCacheMap.values.toList.sortWith {
+    postsCacheMap.values.filter(_.originPost.listed).toList.sortWith {
       case (p1, p2) => comparer(p1, p2)
     }
 }
 
 case class GetPostBySlug(slug: String)
 case class GetPostListSorted(offet: Int, limit: Int, comparer: (CompiledPost, CompiledPost) => Boolean)
+case class GetPostListFilteredAndSorted(offet: Int,
+                                        limit: Int,
+                                        filter: CompiledPostClassifier,
+                                        comparer: (CompiledPost, CompiledPost) => Boolean)
+
+
