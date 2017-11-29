@@ -1,6 +1,7 @@
 package v2.filters
 
-import post.postentities.MapPostEntity
+import de.bastigram.post.postentities.MapPostEntity
+
 
 trait LocationFilter {
   def filter(mapPostEntity: MapPostEntity) : Boolean

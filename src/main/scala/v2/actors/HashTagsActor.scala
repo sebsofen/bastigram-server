@@ -2,8 +2,8 @@ package v2.actors
 
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.stream.ActorMaterializer
+import de.bastigram.model.CompiledPost
 import v2.actors.HashTagsActor.{GetPostsForHashTag, SearchHashTag}
-import v2.model.CompiledPost
 import v2.utils.TextProcessing
 
 import scala.collection.mutable

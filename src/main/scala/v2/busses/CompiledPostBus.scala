@@ -2,9 +2,9 @@ package v2.busses
 
 import akka.actor.ActorRef
 import akka.event.{EventBus, ScanningClassification}
-import post.postentities.MapPostEntity
+import de.bastigram.model.CompiledPost
+import de.bastigram.post.postentities.MapPostEntity
 import v2.busses.CompiledPostBus.CompiledPostClassifier
-import v2.model.CompiledPost
 
 class CompiledPostBus extends EventBus with ScanningClassification {
   override type Event = CompiledPost

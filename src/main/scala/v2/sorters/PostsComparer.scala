@@ -1,6 +1,7 @@
 package v2.sorters
 
-import v2.model.CompiledPost
+import de.bastigram.model.CompiledPost
+
 
 trait PostsComparer {
 

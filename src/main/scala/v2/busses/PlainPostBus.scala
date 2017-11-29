@@ -2,8 +2,9 @@ package v2.busses
 
 import akka.actor.ActorRef
 import akka.event.{EventBus, ScanningClassification}
+import de.bastigram.api.PlainPostSource.PlainPost
 import v2.busses.PlainPostBus.PlainPostClassifier
-import v2.sources.PlainPostSource.PlainPost
+
 
 class PlainPostBus extends EventBus with ScanningClassification {
   override type Event = PlainPost

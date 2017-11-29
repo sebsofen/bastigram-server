@@ -1,23 +1,24 @@
 package v2.rest
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import post.PostCompiler.VariableMemory
-import post.postentities._
-import spray.json.{DefaultJsonProtocol, JsArray, JsObject, JsString, JsValue, RootJsonWriter}
+import de.bastigram.model.CompiledPost
+import de.bastigram.post.PostCompiler.VariableMemory
+import de.bastigram.post.postentities._
+import spray.json.{DefaultJsonProtocol, JsArray, JsObject, JsString, JsValue, RootJsonFormat, RootJsonWriter}
 import v2.actors.{HashTagAndStats, HashTagStats}
-import v2.model.CompiledPost
+
 
 trait NewJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
 
-  implicit val hashTagStatsFormat = jsonFormat1(HashTagStats)
-  implicit val hashTagAndStatsFormat = jsonFormat2(HashTagAndStats)
+  implicit val hashTagStatsFormat: RootJsonFormat[HashTagStats] = jsonFormat1(HashTagStats)
+  implicit val hashTagAndStatsFormat: RootJsonFormat[HashTagAndStats] = jsonFormat2(HashTagAndStats)
 
-  implicit val postBodyEntityFormat = jsonFormat(PostBodyEntity.apply(_), "body")
-  implicit val imagePostEntityFormat = jsonFormat(ImagePostEntity.apply(_), "imgs")
-  implicit val latLonFormat = jsonFormat2(LatLon)
-  implicit val mapPostEntityFormat = jsonFormat3(MapPostEntity.apply)
-  implicit val listPostEntityFormat = jsonFormat(ListPostEntity.apply(_), "list")
-  implicit val datePostEntityFormat = jsonFormat(DatePostEntity.apply(_), "timestamp")
+  implicit val postBodyEntityFormat: RootJsonFormat[PostBodyEntity] = jsonFormat(PostBodyEntity.apply(_), "body")
+  implicit val imagePostEntityFormat: RootJsonFormat[ImagePostEntity] = jsonFormat(ImagePostEntity.apply(_), "imgs")
+  implicit val latLonFormat: RootJsonFormat[LatLon] = jsonFormat2(LatLon)
+  implicit val mapPostEntityFormat: RootJsonFormat[MapPostEntity] = jsonFormat3(MapPostEntity.apply)
+  implicit val listPostEntityFormat: RootJsonFormat[ListPostEntity] = jsonFormat(ListPostEntity.apply(_), "list")
+  implicit val datePostEntityFormat: RootJsonFormat[DatePostEntity] = jsonFormat(DatePostEntity.apply(_), "timestamp")
 
   implicit object PostEntityFormat extends RootJsonWriter[PostEntityTrait] {
 

@@ -9,8 +9,10 @@ import akka.stream.ActorMaterializer
 import akka.util.Timeout
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.Logger
-import post.PostCompiler
-import post.postentities.MapPostEntity
+import de.bastigram.dir.{PlainPostSourceFromDir, PlainPostSourceFromDirSettings}
+import de.bastigram.model.CompiledPost
+import de.bastigram.post.PostCompiler
+import de.bastigram.post.postentities.MapPostEntity
 import v2.actors.HashTagsActor.{GetPostsForHashTag, SearchHashTag}
 import v2.actors.LocationCacheActor.GetLocations
 import v2.actors.PostLikesReadActor.{GerUserLikes, GetPostLikeCounts, GetUserLikePost}
@@ -20,8 +22,6 @@ import v2.busses.CompiledPostBus.{AllCompiledPostClassifier, PostSlugSetClassifi
 import v2.busses.PlainPostBus.AllPlainPostClassifier
 import v2.busses.{CompiledPostBus, PlainPostBus}
 import v2.filters.AllLocationsFilter
-import v2.model.CompiledPost
-import v2.sources.{PlainPostSourceFromDir, PlainPostSourceFromDirSettings}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._

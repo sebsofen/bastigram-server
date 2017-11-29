@@ -5,11 +5,11 @@ import akka.http.scaladsl.model.DateTime
 import akka.http.scaladsl.model.headers.HttpCookie
 import akka.http.scaladsl.server.Directives.{complete, get, onSuccess, path, pathPrefix, _}
 import akka.http.scaladsl.server.Route
-import _root_.post.postentities.MapPostEntity
+import de.bastigram.model.CompiledPost
+import de.bastigram.post.postentities.MapPostEntity
 import v2.actors.HashTagAndStats
 import v2.busses.CompiledPostBus.{CompiledPostClassifier, PostByLocationNameClassifier}
 import v2.filters.AllLocationsFilter
-import v2.model.CompiledPost
 import v2.rest.NewJsonSupport
 import v2.sorters.PostsComparer
 

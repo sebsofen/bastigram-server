@@ -4,8 +4,8 @@ import akka.actor.{Actor, ActorSystem, Props}
 import akka.stream.ActorMaterializer
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.Logger
+import de.bastigram.api.PlainPostSource
 import v2.busses.PlainPostBus
-import v2.sources.PlainPostSource
 
 import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration._

@@ -3,12 +3,12 @@ package v2.actors
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.stream.scaladsl.{Sink, Source}
 import akka.stream.{ActorAttributes, ActorMaterializer, Supervision}
-import post.PostCompiler
-import post.postentities.PostException
+import de.bastigram.api.PlainPostSource.PlainPost
+import de.bastigram.model.CompiledPost
+import de.bastigram.post.PostCompiler
+import de.bastigram.post.postentities.PostException
 import v2.busses.CompiledPostBus
 import v2.busses.CompiledPostBus.CompiledPostClassifier
-import v2.model.CompiledPost
-import v2.sources.PlainPostSource.PlainPost
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContextExecutor

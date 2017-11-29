@@ -1,5 +1,0 @@
-package spec
-
-class DefaultImplicit {
-
-}

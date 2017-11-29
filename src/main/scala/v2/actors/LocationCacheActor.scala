@@ -2,10 +2,10 @@ package v2.actors
 
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.stream.ActorMaterializer
-import post.postentities.MapPostEntity
-import v2.actors.LocationCacheActor.{GetLocations}
+import de.bastigram.model.CompiledPost
+import de.bastigram.post.postentities.MapPostEntity
+import v2.actors.LocationCacheActor.GetLocations
 import v2.filters.LocationFilter
-import v2.model.CompiledPost
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContextExecutor
