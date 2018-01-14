@@ -15,8 +15,10 @@ trait NewJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
 
   implicit val postBodyEntityFormat: RootJsonFormat[PostBodyEntity] = jsonFormat(PostBodyEntity.apply(_), "body")
   implicit val imagePostEntityFormat: RootJsonFormat[ImagePostEntity] = jsonFormat(ImagePostEntity.apply(_), "imgs")
+  implicit val labelPostEntityFormat: RootJsonFormat[LabelPostEntity] = jsonFormat(LabelPostEntity.apply(_), "label")
   implicit val latLonFormat: RootJsonFormat[LatLon] = jsonFormat2(LatLon)
-  implicit val mapPostEntityFormat: RootJsonFormat[MapPostEntity] = jsonFormat3(MapPostEntity.apply)
+  implicit val mapPostEntityFormat: RootJsonFormat[MapPostEntity] = jsonFormat6(MapPostEntity.apply)
+  implicit val youtubePostEntityFormat: RootJsonFormat[YoutubePostEntity] = jsonFormat1(YoutubePostEntity.apply)
   implicit val listPostEntityFormat: RootJsonFormat[ListPostEntity] = jsonFormat(ListPostEntity.apply(_), "list")
   implicit val datePostEntityFormat: RootJsonFormat[DatePostEntity] = jsonFormat(DatePostEntity.apply(_), "timestamp")
 
@@ -25,12 +27,14 @@ trait NewJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
     override def write(obj: PostEntityTrait): JsValue = {
 
       val a = obj match {
-        case postBodyEntity: PostBodyEntity   => postBodyEntityFormat.write(postBodyEntity)
-        case imagePostEntity: ImagePostEntity => imagePostEntityFormat.write(imagePostEntity)
-        case listPostentity: ListPostEntity   => listPostEntityFormat.write(listPostentity)
-        case datePostEntity: DatePostEntity   => datePostEntityFormat.write(datePostEntity)
-        case mapPostEntity: MapPostEntity   => mapPostEntityFormat.write(mapPostEntity)
-        case _                                => ??? //TODO: ADD MORE
+        case et: PostBodyEntity         => postBodyEntityFormat.write(et)
+        case et: ImagePostEntity       => imagePostEntityFormat.write(et)
+        case et: ListPostEntity         => listPostEntityFormat.write(et)
+        case et: DatePostEntity         => datePostEntityFormat.write(et)
+        case et: MapPostEntity           => mapPostEntityFormat.write(et)
+        case et: YoutubePostEntity   => youtubePostEntityFormat.write(et)
+        case et: LabelPostEntity       => labelPostEntityFormat.write(et)
+        case _                                      => ??? //TODO: ADD MORE
       }
 
       JsObject(Map("cnt" -> a, "type" -> JsString(obj.typeDesc())))
